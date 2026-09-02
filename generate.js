@@ -290,15 +290,28 @@ async function generateWithAI() {
   console.log(`Étape 2/3 — Recherche de vraies photos parmi ${candidates.length} actualités candidates...`);
   const selected = [];
   const usedIndices = new Set();
+  const usedImages = new Set();
 
   for (let i = 0; i < candidates.length && selected.length < 3; i++) {
     const item = candidates[i];
-    const realSourceImage = await fetchOgImage(item.sourceUrl);
+    let realSourceImage = await fetchOgImage(item.sourceUrl);
+    if (realSourceImage && usedImages.has(realSourceImage)) {
+      debugImage(item.sourceUrl, `image déjà utilisée par un autre article, rejetée : ${realSourceImage}`);
+      realSourceImage = null;
+    }
     if (!realSourceImage) {
       console.log(`  ✗ Pas de vraie photo pour "${item.title}" — actualité écartée.`);
       continue;
     }
-    const realPlayerImage = (await fetchOgImage(item.playerSourceUrl)) || realSourceImage;
+    let realPlayerImage = await fetchOgImage(item.playerSourceUrl);
+    if (realPlayerImage && usedImages.has(realPlayerImage)) {
+      realPlayerImage = null;
+    }
+    realPlayerImage = realPlayerImage || realSourceImage;
+
+    usedImages.add(realSourceImage);
+    usedImages.add(realPlayerImage);
+
     console.log(`  ✓ Vraie photo trouvée pour "${item.title}".`);
     usedIndices.add(i);
     selected.push({ item, image1: realSourceImage, image2: realPlayerImage });
