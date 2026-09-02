@@ -1,0 +1,595 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nawijo — Actualités sportives jeunesse</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy:#2D4E8A;
+    --navy-dark:#213c6b;
+    --gold:#F5C400;
+    --gold-dark:#c99f00;
+    --red:#B83A3A;
+    --green:#1F8A5F;
+    --gray:#A0A0A0;
+    --white:#FFFFFF;
+    --bg:#F7F8FC;
+    --radius-lg:24px;
+    --radius-md:16px;
+    --radius-sm:10px;
+    --shadow:0 6px 18px rgba(45,78,138,0.14);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:'Nunito', sans-serif;
+    background:var(--bg);
+    color:var(--navy-dark);
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+  }
+  h1,h2,h3,.title-font{font-family:'Baloo 2', sans-serif;}
+  button{font-family:inherit; cursor:pointer;}
+  .hidden{display:none !important;}
+
+  /* ---------- Header ---------- */
+  .app-header{
+    background:var(--white);
+    padding:12px 20px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border-bottom:1px solid #EEE1B8;
+    box-shadow:0 2px 10px rgba(0,0,0,0.06);
+  }
+  .logo-img{height:46px; width:auto; display:block;}
+
+  /* ---------- Layout shells ---------- */
+  main{flex:1; width:100%; display:flex; flex-direction:column; align-items:center;}
+  .screen{width:100%; max-width:640px; padding:20px 16px 100px; flex:1; display:flex; flex-direction:column;}
+  .screen.page-screen{padding-bottom:24px;}
+
+  /* ---------- Screen 1: home ---------- */
+  .date-bar{display:flex; align-items:center; gap:10px; margin:4px 0 20px;}
+  .date-bar-accent{width:4px; height:16px; background:var(--gold); border-radius:2px; flex-shrink:0;}
+  .date-bar-label{font-family:'Baloo 2', sans-serif; font-weight:700; font-size:13px; letter-spacing:1.5px; color:var(--gold-dark); text-transform:uppercase;}
+
+  .articles-list{display:flex; flex-direction:column; gap:18px;}
+
+  .archive-section{margin-top:34px;}
+  .archive-title{font-family:'Baloo 2', sans-serif; font-size:16px; color:var(--navy); margin:0 0 12px; display:flex; align-items:center; gap:8px;}
+  .archive-list{display:flex; flex-direction:column; gap:10px;}
+  .archive-row{background:var(--white); border-radius:var(--radius-md); box-shadow:var(--shadow); overflow:hidden;}
+  .archive-row-header{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:14px 18px;
+    cursor:pointer;
+    font-family:'Baloo 2', sans-serif; font-weight:700; font-size:14px; color:var(--navy);
+  }
+  .archive-row-header .chevron{color:var(--gray); transition:transform 0.2s ease;}
+  .archive-row.open .archive-row-header .chevron{transform:rotate(180deg);}
+  .archive-row-body{display:none; padding:0 16px 16px;}
+  .archive-row.open .archive-row-body{display:block;}
+  .archive-row-body .articles-list{padding-top:4px;}
+  .article-card{
+    background:var(--white);
+    border-radius:var(--radius-lg);
+    overflow:hidden;
+    box-shadow:var(--shadow);
+  }
+  .card-band{
+    display:flex;
+    align-items:center;
+    gap:14px;
+    padding:16px 18px;
+    color:var(--white);
+  }
+  .card-thumb{
+    position:relative;
+    width:64px; height:64px;
+    flex-shrink:0;
+    margin-top:4px;
+  }
+  .card-thumb-img{
+    width:100%; height:100%;
+    object-fit:cover;
+    border-radius:14px;
+    display:block;
+    background:rgba(255,255,255,0.18);
+  }
+  .card-thumb-emoji{
+    position:absolute;
+    top:-8px; left:-8px;
+    width:24px; height:24px;
+    border-radius:50%;
+    background:var(--white);
+    display:flex; align-items:center; justify-content:center;
+    font-size:13px;
+    box-shadow:0 2px 6px rgba(0,0,0,0.25);
+  }
+  .card-band-text .card-title{font-family:'Baloo 2',sans-serif; font-weight:700; font-size:17px; line-height:1.25;}
+  .card-band-text .card-subtitle{font-size:13px; opacity:0.92; margin-top:2px;}
+  .card-band.on-gold, .card-band.on-gold .card-title, .card-band.on-gold .card-subtitle{color:var(--navy-dark);}
+
+  .level-buttons{display:grid; grid-template-columns:repeat(3,1fr);}
+  .level-btn{
+    border:none;
+    background:var(--white);
+    padding:16px 0;
+    font-size:28px;
+    border-top:1px solid #EFEFF5;
+    transition:background 0.15s ease, transform 0.1s ease;
+  }
+  .level-btn:not(:last-child){border-right:1px solid #EFEFF5;}
+  .level-btn:hover{background:#F2F5FC;}
+  .level-btn:active{transform:scale(0.92);}
+
+  .lexique-bar{
+    position:fixed;
+    bottom:0; left:0; right:0;
+    background:var(--white);
+    border-top:1px solid #E4E6F0;
+    box-shadow:0 -2px 10px rgba(0,0,0,0.06);
+    display:flex;
+    justify-content:center;
+    z-index:20;
+  }
+  .lexique-inner{
+    width:100%; max-width:640px;
+    display:grid; grid-template-columns:repeat(3,1fr);
+    padding:8px 16px;
+  }
+  .lexique-item{
+    text-align:center;
+    font-size:11.5px;
+    color:var(--gray);
+    font-weight:700;
+    white-space:nowrap;
+  }
+
+  /* ---------- Screens 2 & 3: article pages ---------- */
+  .page-topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    margin:16px 0 14px;
+  }
+  .level-badge{
+    display:flex; align-items:center; gap:8px;
+    background:var(--white);
+    border-radius:999px;
+    padding:8px 14px;
+    box-shadow:var(--shadow);
+    font-weight:800;
+    font-size:14px;
+    color:var(--navy);
+  }
+  .level-badge .emoji{font-size:20px;}
+  .page-indicator{
+    background:var(--navy);
+    color:var(--white);
+    font-weight:700;
+    font-size:13px;
+    padding:8px 14px;
+    border-radius:999px;
+  }
+
+  .article-photo{
+    width:100%;
+    aspect-ratio:16/10;
+    object-fit:cover;
+    border-radius:var(--radius-lg);
+    box-shadow:var(--shadow);
+    background:#dde3ee;
+  }
+  .page-title{
+    font-size:22px;
+    color:var(--navy);
+    margin:18px 0 10px;
+  }
+  .page-body{
+    font-size:16px;
+    line-height:1.7;
+    color:#33415c;
+    background:var(--white);
+    border-radius:var(--radius-md);
+    padding:18px 20px;
+    box-shadow:var(--shadow);
+    flex:1;
+  }
+
+  .actions{display:flex; flex-direction:column; gap:10px; margin-top:20px;}
+  .btn{
+    border:none;
+    border-radius:999px;
+    padding:15px 20px;
+    font-family:'Baloo 2', sans-serif;
+    font-weight:700;
+    font-size:17px;
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    box-shadow:var(--shadow);
+  }
+  .btn-primary{background:var(--navy); color:var(--white);}
+  .btn-primary:active{background:var(--navy-dark);}
+  .btn-result{background:var(--gold); color:var(--navy-dark);}
+  .btn-secondary{background:var(--white); color:var(--navy); box-shadow:none; border:2px solid #E1E6F2;}
+
+  /* ---------- Screen 4: bravo ---------- */
+  .bravo-screen{align-items:center; text-align:center; justify-content:center;}
+  .bravo-emojis{font-size:52px; margin-bottom:6px;}
+  .bravo-stars{font-size:34px; margin-bottom:14px; letter-spacing:4px;}
+  .bravo-message{font-size:21px; color:var(--navy); max-width:420px; margin:0 0 22px;}
+  .bravo-stats{
+    background:var(--white);
+    border-radius:var(--radius-lg);
+    box-shadow:var(--shadow);
+    padding:20px 24px;
+    width:100%;
+    max-width:380px;
+    margin-bottom:26px;
+  }
+  .bravo-stat-row{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:10px 0;
+    font-size:14.5px;
+    color:#33415c;
+  }
+  .bravo-stat-row:not(:last-child){border-bottom:1px dashed #E1E6F2;}
+  .bravo-stat-row strong{color:var(--navy); font-family:'Baloo 2',sans-serif;}
+
+  .loading, .error-box{
+    text-align:center;
+    color:var(--gray);
+    padding:40px 20px;
+    font-size:15px;
+  }
+  .error-box{color:var(--red); font-weight:700;}
+
+  @media (min-width:700px){
+    .articles-list{display:grid; grid-template-columns:repeat(3,1fr); align-items:start;}
+    .screen{max-width:1040px;}
+    .lexique-inner{max-width:1040px;}
+    .page-screen{max-width:640px; align-self:center;}
+  }
+</style>
+</head>
+<body>
+
+<template id="logo-template">
+  <img class="logo-img" src="/nawijo-logo.jpg" alt="Nawijo — Lis. Découvre. Grandis.">
+</template>
+
+<header class="app-header" id="app-header"></header>
+
+<main>
+
+  <!-- Écran 1 : Accueil -->
+  <section id="screen-home" class="screen">
+    <div class="date-bar">
+      <span class="date-bar-accent"></span>
+      <span class="date-bar-label" id="date-bar-label"></span>
+    </div>
+    <div id="articles-list" class="articles-list">
+      <div class="loading">Chargement des articles...</div>
+    </div>
+
+    <div class="archive-section" id="archive-section" hidden>
+      <h2 class="archive-title">📅 Archives</h2>
+      <div id="archive-list" class="archive-list"></div>
+    </div>
+  </section>
+
+  <!-- Écran 2 : Page 1 -->
+  <section id="screen-page1" class="screen page-screen hidden">
+    <div class="page-topbar">
+      <div class="level-badge" id="badge-page1"></div>
+      <div class="page-indicator">Page 1 / 2</div>
+    </div>
+    <img class="article-photo" id="photo-page1" alt="">
+    <h2 class="page-title" id="title-page1"></h2>
+    <div class="page-body" id="body-page1"></div>
+    <div class="actions">
+      <button class="btn btn-primary" id="btn-next">Suivant → </button>
+      <button class="btn btn-secondary" id="btn-back-1">← Retour</button>
+    </div>
+  </section>
+
+  <!-- Écran 3 : Page 2 -->
+  <section id="screen-page2" class="screen page-screen hidden">
+    <div class="page-topbar">
+      <div class="level-badge" id="badge-page2"></div>
+      <div class="page-indicator">Page 2 / 2</div>
+    </div>
+    <img class="article-photo" id="photo-page2" alt="">
+    <h2 class="page-title" id="title-page2"></h2>
+    <div class="page-body" id="body-page2"></div>
+    <div class="actions">
+      <button class="btn btn-result" id="btn-result">Voir mon résultat ! 🏆</button>
+      <button class="btn btn-secondary" id="btn-back-2">← Retour</button>
+    </div>
+  </section>
+
+  <!-- Écran 4 : Bravo -->
+  <section id="screen-bravo" class="screen bravo-screen hidden">
+    <div class="bravo-emojis">🎉🏆🎉</div>
+    <div class="bravo-stars" id="bravo-stars"></div>
+    <p class="bravo-message" id="bravo-message"></p>
+    <div class="bravo-stats">
+      <div class="bravo-stat-row"><span>Pages lues</span><strong>2 / 2</strong></div>
+      <div class="bravo-stat-row"><span>Article complété</span><strong id="bravo-article-title"></strong></div>
+      <div class="bravo-stat-row"><span>Niveau</span><strong id="bravo-level"></strong></div>
+    </div>
+    <button class="btn btn-primary" id="btn-restart">📰 Lire un autre article</button>
+  </section>
+
+</main>
+
+<div class="lexique-bar" id="lexique-bar">
+  <div class="lexique-inner">
+    <div class="lexique-item">📖 Je commence</div>
+    <div class="lexique-item">📚 Je lis bien</div>
+    <div class="lexique-item">🎓 Je maîtrise</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const state = {
+    levels: [],
+    congrats: {},
+    articles: [],
+    articleCache: {},
+    currentArticleId: null,
+    currentLevelKey: null
+  };
+
+  const screens = {
+    home: document.getElementById('screen-home'),
+    page1: document.getElementById('screen-page1'),
+    page2: document.getElementById('screen-page2'),
+    bravo: document.getElementById('screen-bravo')
+  };
+  const lexiqueBar = document.getElementById('lexique-bar');
+
+  function injectLogo(){
+    const tpl = document.getElementById('logo-template');
+    const header = document.getElementById('app-header');
+    header.innerHTML = '';
+    header.appendChild(tpl.content.cloneNode(true));
+  }
+
+  function showScreen(name){
+    Object.entries(screens).forEach(([key, el]) => {
+      el.classList.toggle('hidden', key !== name);
+    });
+    lexiqueBar.classList.toggle('hidden', name !== 'home');
+    window.scrollTo(0, 0);
+  }
+
+  function levelByKey(key){
+    return state.levels.find((l) => l.key === key);
+  }
+
+  async function loadLevels(){
+    const res = await fetch('/api/levels');
+    const data = await res.json();
+    state.levels = data.levels;
+    state.congrats = data.congrats;
+  }
+
+  const MONTHS_FR = ['JAN.', 'FÉV.', 'MARS', 'AVR.', 'MAI', 'JUIN', 'JUIL.', 'AOÛT', 'SEPT.', 'OCT.', 'NOV.', 'DÉC.'];
+
+  function renderDate(isoDate){
+    const label = document.getElementById('date-bar-label');
+    if (!isoDate){
+      label.textContent = "Actualités du jour";
+      return;
+    }
+    const [year, month, day] = isoDate.split('-').map(Number);
+    label.textContent = `Actualités du ${day} ${MONTHS_FR[month - 1]} ${year}`;
+  }
+
+  async function loadArticles(){
+    const container = document.getElementById('articles-list');
+    try {
+      const res = await fetch('/api/articles');
+      const data = await res.json();
+      state.articles = data.articles;
+      renderDate(data.date);
+      renderArticles();
+    } catch (err) {
+      container.innerHTML = '<div class="error-box">Impossible de charger les articles. Le serveur est-il démarré ?</div>';
+    }
+  }
+
+  function buildArticleCard(article){
+    const card = document.createElement('div');
+    card.className = 'article-card';
+
+    const isGold = article.teamColor.toLowerCase() === '#f5c400';
+    const band = document.createElement('div');
+    band.className = 'card-band' + (isGold ? ' on-gold' : '');
+    band.style.background = article.teamColor;
+    band.innerHTML = `
+      <div class="card-thumb">
+        ${article.image ? `<img class="card-thumb-img" src="${escapeHtml(article.image)}" alt="" onerror="this.remove()">` : ''}
+        <span class="card-thumb-emoji">${article.badgeEmoji}</span>
+      </div>
+      <div class="card-band-text">
+        <div class="card-title">${escapeHtml(article.title)}</div>
+        <div class="card-subtitle">${escapeHtml(article.subtitle)}</div>
+      </div>
+    `;
+
+    const buttons = document.createElement('div');
+    buttons.className = 'level-buttons';
+    state.levels.forEach((level) => {
+      const btn = document.createElement('button');
+      btn.className = 'level-btn';
+      btn.textContent = level.emoji;
+      btn.setAttribute('aria-label', level.name);
+      btn.addEventListener('click', () => openArticle(article.id, level.key));
+      buttons.appendChild(btn);
+    });
+
+    card.appendChild(band);
+    card.appendChild(buttons);
+    return card;
+  }
+
+  function renderArticles(){
+    const container = document.getElementById('articles-list');
+    if (!state.articles.length){
+      container.innerHTML = "<div class=\"error-box\">Aucun article pour aujourd'hui. Lance \"node generate.js\" pour en générer.</div>";
+      return;
+    }
+    container.innerHTML = '';
+    state.articles.forEach((article) => container.appendChild(buildArticleCard(article)));
+  }
+
+  function formatDateLabel(isoDate){
+    const [year, month, day] = isoDate.split('-').map(Number);
+    return `${day} ${MONTHS_FR[month - 1]} ${year}`;
+  }
+
+  async function loadArchive(){
+    try {
+      const res = await fetch('/api/archive');
+      const data = await res.json();
+      renderArchiveList(data.dates);
+    } catch (err) {
+      // L'archive est secondaire : on ignore silencieusement une erreur réseau ici.
+    }
+  }
+
+  function renderArchiveList(dates){
+    const section = document.getElementById('archive-section');
+    const list = document.getElementById('archive-list');
+    if (!dates.length){
+      section.hidden = true;
+      return;
+    }
+    section.hidden = false;
+    list.innerHTML = '';
+
+    dates.forEach((isoDate) => {
+      const row = document.createElement('div');
+      row.className = 'archive-row';
+
+      const header = document.createElement('div');
+      header.className = 'archive-row-header';
+      header.innerHTML = `<span>🗓️ ${formatDateLabel(isoDate)}</span><span class="chevron">▾</span>`;
+
+      const body = document.createElement('div');
+      body.className = 'archive-row-body';
+
+      header.addEventListener('click', async () => {
+        const isOpen = row.classList.toggle('open');
+        if (isOpen && !body.dataset.loaded){
+          body.innerHTML = '<div class="loading">Chargement...</div>';
+          try {
+            const res = await fetch('/api/archive/' + isoDate);
+            const data = await res.json();
+            const grid = document.createElement('div');
+            grid.className = 'articles-list';
+            data.articles.forEach((article) => grid.appendChild(buildArticleCard(article)));
+            body.innerHTML = '';
+            body.appendChild(grid);
+            body.dataset.loaded = 'true';
+          } catch (err) {
+            body.innerHTML = '<div class="error-box">Impossible de charger ces articles.</div>';
+          }
+        }
+      });
+
+      row.appendChild(header);
+      row.appendChild(body);
+      list.appendChild(row);
+    });
+  }
+
+  function escapeHtml(str){
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  async function openArticle(articleId, levelKey){
+    state.currentArticleId = articleId;
+    state.currentLevelKey = levelKey;
+
+    if (!state.articleCache[articleId]){
+      try {
+        const res = await fetch('/api/articles/' + articleId);
+        if (!res.ok) throw new Error('not found');
+        const data = await res.json();
+        state.articleCache[articleId] = data.article;
+      } catch (err) {
+        alert("Impossible de charger cet article.");
+        return;
+      }
+    }
+    renderPage(1);
+    showScreen('page1');
+  }
+
+  function currentArticle(){
+    return state.articleCache[state.currentArticleId];
+  }
+
+  function renderPage(pageNumber){
+    const article = currentArticle();
+    const level = levelByKey(state.currentLevelKey);
+    const page = article.content[state.currentLevelKey][pageNumber];
+    const suffix = pageNumber === 1 ? '1' : '2';
+
+    document.getElementById('badge-page' + suffix).innerHTML =
+      `<span class="emoji">${level.emoji}</span><span>${level.name}</span>`;
+    document.getElementById('photo-page' + suffix).src = page.image;
+    document.getElementById('photo-page' + suffix).alt = page.title;
+    document.getElementById('title-page' + suffix).textContent = page.title;
+    document.getElementById('body-page' + suffix).textContent = page.body;
+  }
+
+  function renderBravo(){
+    const article = currentArticle();
+    const level = levelByKey(state.currentLevelKey);
+    document.getElementById('bravo-stars').textContent = '⭐'.repeat(level.stars);
+    document.getElementById('bravo-message').textContent = state.congrats[level.key];
+    document.getElementById('bravo-article-title').textContent = article.title;
+    document.getElementById('bravo-level').textContent = `${level.emoji} ${level.name}`;
+  }
+
+  document.getElementById('btn-next').addEventListener('click', () => {
+    renderPage(2);
+    showScreen('page2');
+  });
+  document.getElementById('btn-back-1').addEventListener('click', () => showScreen('home'));
+  document.getElementById('btn-back-2').addEventListener('click', () => showScreen('home'));
+  document.getElementById('btn-result').addEventListener('click', () => {
+    renderBravo();
+    showScreen('bravo');
+  });
+  document.getElementById('btn-restart').addEventListener('click', () => {
+    state.currentArticleId = null;
+    state.currentLevelKey = null;
+    showScreen('home');
+  });
+
+  async function init(){
+    injectLogo();
+    showScreen('home');
+    await loadLevels();
+    await loadArticles();
+    await loadArchive();
+  }
+
+  init();
+})();
+</script>
+
+</body>
+</html>
