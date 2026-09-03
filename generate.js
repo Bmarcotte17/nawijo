@@ -49,7 +49,7 @@ function textFromResponse(response) {
     .join('\n');
 }
 
-const CANDIDATE_POOL_SIZE = 8;
+const CANDIDATE_POOL_SIZE = 10;
 
 async function findTodaysNews(client) {
   const prompt = `Trouve les ${CANDIDATE_POOL_SIZE} actualités sportives les plus importantes d'aujourd'hui en français,
@@ -63,6 +63,10 @@ sites de presse généralistes ou sportifs connus pour publier de vraies photos 
 (ex: La Presse, TSN, Sportsnet, NHL.com, MLS.com, sites officiels d'équipes, agences de presse). Évite autant
 que possible les sites qui bloquent les robots ou n'affichent pas de photo dans leurs pages (ex: ESPN,
 Sofascore, Forbes) — préfère une autre source qui couvre le même événement si possible.
+IMPORTANT : utilise l'URL exacte de l'article spécifique qui couvre cet événement précis (ex: se terminant
+par un titre d'article ou un identifiant), jamais une page de catégorie, d'index, d'équipe générique ou de
+liste de nouvelles (ex: "site.com/sports/" ou "site.com/equipe/") — ces pages génériques n'ont pas de photo
+propre à l'événement.
 
 Réponds uniquement avec un objet JSON valide (sans texte autour, sans balises markdown), au format exact suivant :
 {
@@ -81,7 +85,7 @@ Réponds uniquement avec un objet JSON valide (sans texte autour, sans balises m
 
   const response = await client.messages.create({
     model: MODEL,
-    max_tokens: 16000,
+    max_tokens: 24000,
     tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 10 }],
     messages: [{ role: 'user', content: prompt }]
   });
@@ -227,7 +231,35 @@ function debugImage(sourceUrl, reason) {
   if (DEBUG_IMAGES) console.log(`    [debug] ${sourceUrl} -> ${reason}`);
 }
 
-async function fetchOgImage(sourceUrl) {
+async function isRealActionPhoto(client, imageUrl) {
+  try {
+    const response = await client.messages.create({
+      model: MODEL,
+      max_tokens: 10,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'url', url: imageUrl } },
+          {
+            type: 'text',
+            text: 'Cette image est-elle une vraie photo (prise par un appareil photo) d\'un événement sportif, '
+              + 'd\'un athlète ou d\'une action de jeu ? Réponds "non" si c\'est un logo, une bannière, un montage '
+              + 'graphique, une carte de titre avec du texte superposé, une capture d\'écran de site web, un tableau '
+              + 'de tournoi, ou une photo de conférence de presse générique (podium, micro, sans athlète visible). '
+              + 'Réponds uniquement par "oui" ou "non", rien d\'autre.'
+          }
+        ]
+      }]
+    });
+    const text = textFromResponse(response).toLowerCase();
+    return text.includes('oui');
+  } catch (err) {
+    debugImage(imageUrl, `vérification visuelle impossible, image rejetée par prudence : ${err.message}`);
+    return false;
+  }
+}
+
+async function fetchOgImage(sourceUrl, client) {
   if (!sourceUrl) return null;
   try {
     const controller = new AbortController();
@@ -255,10 +287,11 @@ async function fetchOgImage(sourceUrl) {
       .replace(/&lt;/g, '<')
       .replace(/&gt;/g, '>');
     const imageUrl = new URL(decodedRaw, sourceUrl).href;
-    const GENERIC_IMAGE_HINTS = /\bshare\b|\blogo\b|\bplaceholder\b|\bsprite\b|\bfavicon\b|og-image-default|default[-_]?share|social-card|assets\/og\/team|team-logo|\bcrest\b|\bbadge\b|\bbracket\b|\bblank\b|\bchart\b|\bgraphic\b|\btemplate\b|\bbanner\b|\bwordmark\b|\bicon\b|\bschedule\b/i;
+    const GENERIC_IMAGE_HINTS = /\bshare\b|\blogo\b|\bplaceholder\b|\bsprite\b|\bfavicon\b|og-image-default|default[-_]?share|social-card|assets\/og\/team|team-logo|\bcrest\b|\bbadge\b|\bbracket\b|\bblank\b|\bchart\b|\bgraphic\b|\btemplate\b|\bbanner\b|\bwordmark\b|\bicon\b|\bschedule\b|\/api\/og\b|opengraph|open-graph|og-generator|og-image\.|\.vercel\.app/i;
     if (GENERIC_IMAGE_HINTS.test(imageUrl)) return debugImage(sourceUrl, `rejected by keyword filter: ${imageUrl}`), null;
     if (!(await probeImage(imageUrl))) return debugImage(sourceUrl, `failed probeImage: ${imageUrl}`), null;
     if (await looksLikeLogo(imageUrl)) return debugImage(sourceUrl, `looks like a logo (dimensions): ${imageUrl}`), null;
+    if (!(await isRealActionPhoto(client, imageUrl))) return debugImage(sourceUrl, `rejected by vision check (logo/graphic/text card): ${imageUrl}`), null;
 
     debugImage(sourceUrl, `ACCEPTED: ${imageUrl}`);
     return imageUrl;
@@ -294,7 +327,7 @@ async function generateWithAI() {
 
   for (let i = 0; i < candidates.length && selected.length < 3; i++) {
     const item = candidates[i];
-    let realSourceImage = await fetchOgImage(item.sourceUrl);
+    let realSourceImage = await fetchOgImage(item.sourceUrl, client);
     if (realSourceImage && usedImages.has(realSourceImage)) {
       debugImage(item.sourceUrl, `image déjà utilisée par un autre article, rejetée : ${realSourceImage}`);
       realSourceImage = null;
@@ -303,7 +336,7 @@ async function generateWithAI() {
       console.log(`  ✗ Pas de vraie photo pour "${item.title}" — actualité écartée.`);
       continue;
     }
-    let realPlayerImage = await fetchOgImage(item.playerSourceUrl);
+    let realPlayerImage = await fetchOgImage(item.playerSourceUrl, client);
     if (realPlayerImage && usedImages.has(realPlayerImage)) {
       realPlayerImage = null;
     }
