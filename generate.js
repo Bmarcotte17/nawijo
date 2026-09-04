@@ -231,7 +231,7 @@ function debugImage(sourceUrl, reason) {
   if (DEBUG_IMAGES) console.log(`    [debug] ${sourceUrl} -> ${reason}`);
 }
 
-async function isRealActionPhoto(client, imageUrl) {
+async function isRealActionPhoto(client, imageUrl, context) {
   try {
     const response = await client.messages.create({
       model: MODEL,
@@ -242,11 +242,21 @@ async function isRealActionPhoto(client, imageUrl) {
           { type: 'image', source: { type: 'url', url: imageUrl } },
           {
             type: 'text',
-            text: 'Cette image est-elle une vraie photo (prise par un appareil photo) d\'un événement sportif, '
-              + 'd\'un athlète ou d\'une action de jeu ? Réponds "non" si c\'est un logo, une bannière, un montage '
-              + 'graphique, une carte de titre avec du texte superposé, une capture d\'écran de site web, un tableau '
-              + 'de tournoi, ou une photo de conférence de presse générique (podium, micro, sans athlète visible). '
-              + 'Réponds uniquement par "oui" ou "non", rien d\'autre.'
+            text: context
+              ? `Sujet de l'article : "${context}".\n\n`
+                + 'Cette image est-elle une vraie photo (prise par un appareil photo), pertinente pour ce sujet précis ? '
+                + 'Réponds "non" si : (1) c\'est un logo, une bannière, un montage graphique, une carte de titre avec du '
+                + 'texte superposé, une capture d\'écran de site web, un tableau de tournoi, ou une photo de conférence '
+                + 'de presse générique (podium, micro, sans athlète visible) ; OU (2) la photo montre clairement une '
+                + 'autre équipe, un autre athlète ou un autre contexte que celui du sujet indiqué (ex: une vieille photo '
+                + 'd\'archive sans lien avec ce sujet précis). Si tu ne reconnais pas les personnes sur la photo, réponds '
+                + '"oui" seulement si le contexte visuel (uniforme, logo d\'équipe, lieu) correspond au sujet. '
+                + 'Réponds uniquement par "oui" ou "non", rien d\'autre.'
+              : 'Cette image est-elle une vraie photo (prise par un appareil photo) d\'un événement sportif, '
+                + 'd\'un athlète ou d\'une action de jeu ? Réponds "non" si c\'est un logo, une bannière, un montage '
+                + 'graphique, une carte de titre avec du texte superposé, une capture d\'écran de site web, un tableau '
+                + 'de tournoi, ou une photo de conférence de presse générique (podium, micro, sans athlète visible). '
+                + 'Réponds uniquement par "oui" ou "non", rien d\'autre.'
           }
         ]
       }]
@@ -259,46 +269,101 @@ async function isRealActionPhoto(client, imageUrl) {
   }
 }
 
-async function fetchOgImage(sourceUrl, client) {
-  if (!sourceUrl) return null;
+async function fetchArticleHtml(url) {
+  if (!url) return null;
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
-    const res = await fetch(sourceUrl, {
+    const res = await fetch(url, {
       redirect: 'follow',
       signal: controller.signal,
       headers: { 'User-Agent': BROWSER_USER_AGENT, Accept: 'text/html' }
     });
     clearTimeout(timeout);
-    if (!res.ok) return debugImage(sourceUrl, `HTTP ${res.status}`), null;
+    if (!res.ok) return debugImage(url, `HTTP ${res.status}`), null;
     const contentType = res.headers.get('content-type') || '';
-    if (!contentType.includes('text/html')) return debugImage(sourceUrl, `content-type ${contentType}`), null;
-
-    const html = await res.text();
-    const match = html.match(/<meta[^>]+(?:property|name)=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i)
-      || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']og:image(?::secure_url)?["']/i)
-      || html.match(/<meta[^>]+(?:property|name)=["']twitter:image["'][^>]+content=["']([^"']+)["']/i);
-    if (!match) return debugImage(sourceUrl, 'no og:image meta tag found'), null;
-
-    const decodedRaw = match[1]
-      .replace(/&amp;/g, '&')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>');
-    const imageUrl = new URL(decodedRaw, sourceUrl).href;
-    const GENERIC_IMAGE_HINTS = /\bshare\b|\blogo\b|\bplaceholder\b|\bsprite\b|\bfavicon\b|og-image-default|default[-_]?share|social-card|assets\/og\/team|team-logo|\bcrest\b|\bbadge\b|\bbracket\b|\bblank\b|\bchart\b|\bgraphic\b|\btemplate\b|\bbanner\b|\bwordmark\b|\bicon\b|\bschedule\b|\/api\/og\b|opengraph|open-graph|og-generator|og-image\.|\.vercel\.app/i;
-    if (GENERIC_IMAGE_HINTS.test(imageUrl)) return debugImage(sourceUrl, `rejected by keyword filter: ${imageUrl}`), null;
-    if (!(await probeImage(imageUrl))) return debugImage(sourceUrl, `failed probeImage: ${imageUrl}`), null;
-    if (await looksLikeLogo(imageUrl)) return debugImage(sourceUrl, `looks like a logo (dimensions): ${imageUrl}`), null;
-    if (!(await isRealActionPhoto(client, imageUrl))) return debugImage(sourceUrl, `rejected by vision check (logo/graphic/text card): ${imageUrl}`), null;
-
-    debugImage(sourceUrl, `ACCEPTED: ${imageUrl}`);
-    return imageUrl;
+    if (!contentType.includes('text/html')) return debugImage(url, `content-type ${contentType}`), null;
+    return await res.text();
   } catch (err) {
-    debugImage(sourceUrl, `error: ${err.message}`);
+    debugImage(url, `error: ${err.message}`);
     return null;
   }
+}
+
+function decodeHtmlEntities(str) {
+  return str
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+}
+
+function extractOgImageUrl(html, baseUrl) {
+  const match = html.match(/<meta[^>]+(?:property|name)=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i)
+    || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']og:image(?::secure_url)?["']/i)
+    || html.match(/<meta[^>]+(?:property|name)=["']twitter:image["'][^>]+content=["']([^"']+)["']/i);
+  if (!match) return null;
+  try {
+    return new URL(decodeHtmlEntities(match[1]), baseUrl).href;
+  } catch (err) {
+    return null;
+  }
+}
+
+function extractBodyImageCandidates(html, baseUrl) {
+  const candidates = [];
+  const seen = new Set();
+  const imgRegex = /<img[^>]+(?:src|data-src)=["']([^"']+)["']/gi;
+  let match;
+  while ((match = imgRegex.exec(html)) !== null) {
+    const raw = decodeHtmlEntities(match[1]);
+    if (!raw || raw.startsWith('data:')) continue;
+    let url;
+    try {
+      url = new URL(raw, baseUrl).href;
+    } catch (err) {
+      continue;
+    }
+    if (seen.has(url)) continue;
+    seen.add(url);
+    candidates.push(url);
+  }
+  return candidates;
+}
+
+const GENERIC_IMAGE_HINTS = /\bshare\b|\blogo\b|\bplaceholder\b|\bsprite\b|\bfavicon\b|og-image-default|default[-_]?share|social-card|assets\/og\/team|team-logo|\bcrest\b|\bbadge\b|\bbracket\b|\bblank\b|\bchart\b|\bgraphic\b|\btemplate\b|\bbanner\b|\bwordmark\b|\bicon\b|\bschedule\b|\/api\/og\b|opengraph|open-graph|og-generator|og-image\.|\.vercel\.app|avatar|\bads?[-_]|tracking|pixel|1x1|\bauthor\b|\bbyline\b/i;
+
+async function validateImageCandidate(sourceUrl, imageUrl, client, context) {
+  if (!imageUrl) return false;
+  if (GENERIC_IMAGE_HINTS.test(imageUrl)) return debugImage(sourceUrl, `rejected by keyword filter: ${imageUrl}`), false;
+  if (!(await probeImage(imageUrl))) return debugImage(sourceUrl, `failed probeImage: ${imageUrl}`), false;
+  if (await looksLikeLogo(imageUrl)) return debugImage(sourceUrl, `looks like a logo (dimensions): ${imageUrl}`), false;
+  if (!(await isRealActionPhoto(client, imageUrl, context))) return debugImage(sourceUrl, `rejected by vision check (logo/graphic/irrelevant): ${imageUrl}`), false;
+  debugImage(sourceUrl, `ACCEPTED: ${imageUrl}`);
+  return true;
+}
+
+async function fetchOgImage(sourceUrl, client, context) {
+  if (!sourceUrl) return null;
+  const html = await fetchArticleHtml(sourceUrl);
+  if (!html) return null;
+  const imageUrl = extractOgImageUrl(html, sourceUrl);
+  if (!imageUrl) return debugImage(sourceUrl, 'no og:image meta tag found'), null;
+  return (await validateImageCandidate(sourceUrl, imageUrl, client, context)) ? imageUrl : null;
+}
+
+// Cherche une deuxième vraie photo, différente, directement dans le corps de l'article
+// (plutôt que de dépendre d'une deuxième source externe, souvent indisponible).
+async function fetchSecondaryImage(sourceUrl, client, excludeUrls, context) {
+  if (!sourceUrl) return null;
+  const html = await fetchArticleHtml(sourceUrl);
+  if (!html) return null;
+  const candidates = extractBodyImageCandidates(html, sourceUrl).filter((url) => !excludeUrls.has(url));
+  for (const candidate of candidates.slice(0, 8)) {
+    if (await validateImageCandidate(sourceUrl, candidate, client, context)) return candidate;
+  }
+  return null;
 }
 
 function placeholderImage(seed) {
@@ -327,6 +392,10 @@ async function generateWithAI() {
 
   for (let i = 0; i < candidates.length && selected.length < 3; i++) {
     const item = candidates[i];
+    const context = `${item.team} — ${item.sport} — ${item.title}`;
+    // La photo principale (og:image) est déjà choisie par le site source comme photo de
+    // couverture de cet article précis : on garde la vérification simple (vraie photo ?)
+    // pour ne pas la rejeter inutilement.
     let realSourceImage = await fetchOgImage(item.sourceUrl, client);
     if (realSourceImage && usedImages.has(realSourceImage)) {
       debugImage(item.sourceUrl, `image déjà utilisée par un autre article, rejetée : ${realSourceImage}`);
@@ -336,16 +405,22 @@ async function generateWithAI() {
       console.log(`  ✗ Pas de vraie photo pour "${item.title}" — actualité écartée.`);
       continue;
     }
-    let realPlayerImage = await fetchOgImage(item.playerSourceUrl, client);
-    if (realPlayerImage && usedImages.has(realPlayerImage)) {
-      realPlayerImage = null;
+    // Deuxième photo : d'abord une autre image dans le même article (plus fiable),
+    // sinon la source dédiée au joueur vedette, sinon on réutilise la première photo.
+    let realPlayerImage = await fetchSecondaryImage(item.sourceUrl, client, new Set([...usedImages, realSourceImage]), context);
+    if (!realPlayerImage) {
+      const playerCandidate = await fetchOgImage(item.playerSourceUrl, client, context);
+      if (playerCandidate && !usedImages.has(playerCandidate) && playerCandidate !== realSourceImage) {
+        realPlayerImage = playerCandidate;
+      }
     }
+    const hasSecondPhoto = Boolean(realPlayerImage);
     realPlayerImage = realPlayerImage || realSourceImage;
 
     usedImages.add(realSourceImage);
     usedImages.add(realPlayerImage);
 
-    console.log(`  ✓ Vraie photo trouvée pour "${item.title}".`);
+    console.log(`  ✓ Vraie photo trouvée pour "${item.title}"${hasSecondPhoto ? ' (2 photos différentes)' : ' (1 seule photo, réutilisée pour les 2 pages)'}.`);
     usedIndices.add(i);
     selected.push({ item, image1: realSourceImage, image2: realPlayerImage });
   }
