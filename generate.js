@@ -29,6 +29,20 @@ function resolveTargetDate() {
   return arg;
 }
 
+// Deux URLs différentes peuvent pointer vers la même photo sous-jacente (ex: recadrages
+// Cloudinary différents du même asset). On compare l'identifiant réel (dernier segment du
+// chemin, avant les paramètres de requête) plutôt que l'URL complète.
+function imageIdentity(url) {
+  if (!url) return url;
+  try {
+    const u = new URL(url);
+    const segments = u.pathname.split('/').filter(Boolean);
+    return (segments[segments.length - 1] || url).toLowerCase();
+  } catch (err) {
+    return url.toLowerCase();
+  }
+}
+
 function extractJson(text) {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
   const raw = fenced ? fenced[1] : text;
@@ -68,6 +82,13 @@ par un titre d'article ou un identifiant), jamais une page de catégorie, d'inde
 liste de nouvelles (ex: "site.com/sports/" ou "site.com/equipe/") — ces pages génériques n'ont pas de photo
 propre à l'événement.
 
+IMPORTANT : si l'actualité couvre plusieurs athlètes ou plusieurs matchs à la fois (ex: un résumé de plusieurs
+parties de tennis dans un même tournoi), NE PAS attribuer le "team" et le titre à un seul athlète en particulier
+— utilise plutôt un nom collectif (ex: "US Open" ou "Coupe du monde de ski") comme "team", et un titre qui
+reflète l'ensemble du contenu (ex: "L'US Open en résumé : Sinner forfait, Alcaraz revient, Gauff vise un doublé").
+Réserve un "team" nommant un seul athlète/équipe uniquement quand l'actualité porte vraiment sur lui/elle en
+particulier.
+
 Réponds uniquement avec un objet JSON valide (sans texte autour, sans balises markdown), au format exact suivant :
 {
   "articles": [
@@ -85,7 +106,7 @@ Réponds uniquement avec un objet JSON valide (sans texte autour, sans balises m
 
   const response = await client.messages.create({
     model: MODEL,
-    max_tokens: 24000,
+    max_tokens: 32000,
     tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 10 }],
     messages: [{ role: 'user', content: prompt }]
   });
@@ -325,8 +346,9 @@ function extractBodyImageCandidates(html, baseUrl) {
     } catch (err) {
       continue;
     }
-    if (seen.has(url)) continue;
-    seen.add(url);
+    const identity = imageIdentity(url);
+    if (seen.has(identity)) continue;
+    seen.add(identity);
     candidates.push(url);
   }
   return candidates;
@@ -353,15 +375,18 @@ async function fetchOgImage(sourceUrl, client, context) {
   return (await validateImageCandidate(sourceUrl, imageUrl, client, context)) ? imageUrl : null;
 }
 
-// Cherche une deuxième vraie photo, différente, directement dans le corps de l'article
-// (plutôt que de dépendre d'une deuxième source externe, souvent indisponible).
-async function fetchSecondaryImage(sourceUrl, client, excludeUrls, context) {
-  if (!sourceUrl) return null;
-  const html = await fetchArticleHtml(sourceUrl);
-  if (!html) return null;
-  const candidates = extractBodyImageCandidates(html, sourceUrl).filter((url) => !excludeUrls.has(url));
-  for (const candidate of candidates.slice(0, 8)) {
-    if (await validateImageCandidate(sourceUrl, candidate, client, context)) return candidate;
+// Cherche une deuxième vraie photo, différente, dans le corps des articles disponibles
+// (l'article principal, puis celui du joueur vedette) — plutôt que de dépendre d'une
+// deuxième source externe dédiée, souvent indisponible ou sans photo propre.
+async function fetchSecondaryImage(urls, client, excludeUrls, context) {
+  for (const pageUrl of urls) {
+    if (!pageUrl) continue;
+    const html = await fetchArticleHtml(pageUrl);
+    if (!html) continue;
+    const candidates = extractBodyImageCandidates(html, pageUrl).filter((url) => !excludeUrls.has(imageIdentity(url)));
+    for (const candidate of candidates.slice(0, 10)) {
+      if (await validateImageCandidate(pageUrl, candidate, client, context)) return candidate;
+    }
   }
   return null;
 }
@@ -397,7 +422,7 @@ async function generateWithAI() {
     // couverture de cet article précis : on garde la vérification simple (vraie photo ?)
     // pour ne pas la rejeter inutilement.
     let realSourceImage = await fetchOgImage(item.sourceUrl, client);
-    if (realSourceImage && usedImages.has(realSourceImage)) {
+    if (realSourceImage && usedImages.has(imageIdentity(realSourceImage))) {
       debugImage(item.sourceUrl, `image déjà utilisée par un autre article, rejetée : ${realSourceImage}`);
       realSourceImage = null;
     }
@@ -405,20 +430,29 @@ async function generateWithAI() {
       console.log(`  ✗ Pas de vraie photo pour "${item.title}" — actualité écartée.`);
       continue;
     }
-    // Deuxième photo : d'abord une autre image dans le même article (plus fiable),
-    // sinon la source dédiée au joueur vedette, sinon on réutilise la première photo.
-    let realPlayerImage = await fetchSecondaryImage(item.sourceUrl, client, new Set([...usedImages, realSourceImage]), context);
+    // Deuxième photo : cherche une autre vraie photo dans le corps de l'article principal
+    // puis, si besoin, dans celui du joueur vedette ; sinon on réutilise la première photo.
+    let realPlayerImage = await fetchSecondaryImage(
+      [item.sourceUrl, item.playerSourceUrl],
+      client,
+      new Set([...usedImages, imageIdentity(realSourceImage)]),
+      context
+    );
     if (!realPlayerImage) {
       const playerCandidate = await fetchOgImage(item.playerSourceUrl, client, context);
-      if (playerCandidate && !usedImages.has(playerCandidate) && playerCandidate !== realSourceImage) {
+      if (
+        playerCandidate
+        && !usedImages.has(imageIdentity(playerCandidate))
+        && imageIdentity(playerCandidate) !== imageIdentity(realSourceImage)
+      ) {
         realPlayerImage = playerCandidate;
       }
     }
-    const hasSecondPhoto = Boolean(realPlayerImage);
+    const hasSecondPhoto = Boolean(realPlayerImage) && imageIdentity(realPlayerImage) !== imageIdentity(realSourceImage);
     realPlayerImage = realPlayerImage || realSourceImage;
 
-    usedImages.add(realSourceImage);
-    usedImages.add(realPlayerImage);
+    usedImages.add(imageIdentity(realSourceImage));
+    usedImages.add(imageIdentity(realPlayerImage));
 
     console.log(`  ✓ Vraie photo trouvée pour "${item.title}"${hasSecondPhoto ? ' (2 photos différentes)' : ' (1 seule photo, réutilisée pour les 2 pages)'}.`);
     usedIndices.add(i);
