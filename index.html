@@ -185,6 +185,16 @@
     box-shadow:var(--shadow);
     background:#dde3ee;
   }
+  .photo-credit{
+    text-align:right;
+    font-size:11px;
+    color:var(--gray);
+    margin-top:5px;
+  }
+  .photo-credit a{
+    color:var(--gray);
+    text-decoration:underline;
+  }
   .page-title{
     font-size:22px;
     color:var(--navy);
@@ -289,6 +299,7 @@
       <div class="page-indicator">Page 1 / 2</div>
     </div>
     <img class="article-photo" id="photo-page1" alt="">
+    <div class="photo-credit" id="credit-page1" hidden></div>
     <h2 class="page-title" id="title-page1"></h2>
     <div class="page-body" id="body-page1"></div>
     <div class="actions">
@@ -304,6 +315,7 @@
       <div class="page-indicator">Page 2 / 2</div>
     </div>
     <img class="article-photo" id="photo-page2" alt="">
+    <div class="photo-credit" id="credit-page2" hidden></div>
     <h2 class="page-title" id="title-page2"></h2>
     <div class="page-body" id="body-page2"></div>
     <div class="actions">
@@ -552,6 +564,23 @@
     document.getElementById('photo-page' + suffix).alt = page.title;
     document.getElementById('title-page' + suffix).textContent = page.title;
     document.getElementById('body-page' + suffix).textContent = page.body;
+
+    const creditEl = document.getElementById('credit-page' + suffix);
+    if (page.imageSource) {
+      const domain = domainFromUrl(page.imageSource);
+      creditEl.innerHTML = `Photo : <a href="${escapeHtml(page.imageSource)}" target="_blank" rel="noopener noreferrer">${escapeHtml(domain || page.imageSource)}</a>`;
+      creditEl.hidden = false;
+    } else {
+      creditEl.hidden = true;
+    }
+  }
+
+  function domainFromUrl(url){
+    try {
+      return new URL(url).hostname.replace(/^www\./, '');
+    } catch (err) {
+      return null;
+    }
   }
 
   function renderBravo(){

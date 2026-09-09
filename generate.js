@@ -397,6 +397,7 @@ async function fetchOgImage(sourceUrl, client, context) {
 // Cherche une deuxième vraie photo, différente, dans le corps des articles disponibles
 // (l'article principal, puis celui du joueur vedette) — plutôt que de dépendre d'une
 // deuxième source externe dédiée, souvent indisponible ou sans photo propre.
+// Retourne { url, pageUrl } (pageUrl = la page où la photo a été trouvée, pour le crédit).
 async function fetchSecondaryImage(urls, client, excludeUrls, context) {
   for (const pageUrl of urls) {
     if (!pageUrl) continue;
@@ -404,7 +405,7 @@ async function fetchSecondaryImage(urls, client, excludeUrls, context) {
     if (!html) continue;
     const candidates = extractBodyImageCandidates(html, pageUrl).filter((url) => !excludeUrls.has(imageIdentity(url)));
     for (const candidate of candidates.slice(0, 10)) {
-      if (await validateImageCandidate(pageUrl, candidate, client, context)) return candidate;
+      if (await validateImageCandidate(pageUrl, candidate, client, context)) return { url: candidate, pageUrl };
     }
   }
   return null;
@@ -451,13 +452,18 @@ async function generateWithAI(articleDate) {
     }
     // Deuxième photo : cherche une autre vraie photo dans le corps de l'article principal
     // puis, si besoin, dans celui du joueur vedette ; sinon on réutilise la première photo.
-    let realPlayerImage = await fetchSecondaryImage(
+    let realPlayerImage = null;
+    let realPlayerImagePage = null;
+    const secondary = await fetchSecondaryImage(
       [item.sourceUrl, item.playerSourceUrl],
       client,
       new Set([...usedImages, imageIdentity(realSourceImage)]),
       context
     );
-    if (!realPlayerImage) {
+    if (secondary) {
+      realPlayerImage = secondary.url;
+      realPlayerImagePage = secondary.pageUrl;
+    } else {
       const playerCandidate = await fetchOgImage(item.playerSourceUrl, client, context);
       if (
         playerCandidate
@@ -465,17 +471,27 @@ async function generateWithAI(articleDate) {
         && imageIdentity(playerCandidate) !== imageIdentity(realSourceImage)
       ) {
         realPlayerImage = playerCandidate;
+        realPlayerImagePage = item.playerSourceUrl;
       }
     }
     const hasSecondPhoto = Boolean(realPlayerImage) && imageIdentity(realPlayerImage) !== imageIdentity(realSourceImage);
-    realPlayerImage = realPlayerImage || realSourceImage;
+    if (!hasSecondPhoto) {
+      realPlayerImage = realSourceImage;
+      realPlayerImagePage = item.sourceUrl;
+    }
 
     usedImages.add(imageIdentity(realSourceImage));
     usedImages.add(imageIdentity(realPlayerImage));
 
     console.log(`  ✓ Vraie photo trouvée pour "${item.title}"${hasSecondPhoto ? ' (2 photos différentes)' : ' (1 seule photo, réutilisée pour les 2 pages)'}.`);
     usedIndices.add(i);
-    selected.push({ item, image1: realSourceImage, image2: realPlayerImage });
+    selected.push({
+      item,
+      image1: realSourceImage,
+      image1Page: item.sourceUrl,
+      image2: realPlayerImage,
+      image2Page: realPlayerImagePage
+    });
   }
 
   if (selected.length < 3) {
@@ -491,7 +507,7 @@ async function generateWithAI(articleDate) {
 
   const articles = [];
   for (let i = 0; i < selected.length; i++) {
-    const { item, image1, image2 } = selected[i];
+    const { item, image1, image1Page, image2, image2Page } = selected[i];
     console.log(`Étape 3/3 — Génération des textes pour l'article ${i + 1}/${selected.length} (${item.team})...`);
 
     const content = {};
@@ -511,7 +527,9 @@ async function generateWithAI(articleDate) {
       badgeEmoji: pickBadge(item.sport),
       teamColor: BAND_COLORS[i % BAND_COLORS.length],
       image1,
+      image1Page,
       image2,
+      image2Page,
       content
     });
   }
@@ -529,8 +547,8 @@ async function generateArticles(articleDate) {
     const contentWithImages = {};
     for (const level of LEVELS) {
       contentWithImages[level.key] = {
-        1: { ...article.content[level.key][1], image: article.image1 },
-        2: { ...article.content[level.key][2], image: article.image2 }
+        1: { ...article.content[level.key][1], image: article.image1, imageSource: article.image1Page || null },
+        2: { ...article.content[level.key][2], image: article.image2, imageSource: article.image2Page || null }
       };
     }
     insertArticle({
