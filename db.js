@@ -64,6 +64,32 @@ function getPastDates(excludeDate) {
   return rows.map((row) => row.article_date);
 }
 
+function getRecentArticles(excludeDate, limitDays = 3) {
+  const dateRows = db.prepare(`
+    SELECT DISTINCT article_date FROM articles
+    WHERE article_date < ?
+    ORDER BY article_date DESC
+    LIMIT ?
+  `).all(excludeDate, limitDays);
+  const dates = dateRows.map((row) => row.article_date);
+  if (!dates.length) return [];
+
+  const placeholders = dates.map(() => '?').join(',');
+  const rows = db.prepare(`
+    SELECT article_date, team, sport, title, subtitle FROM articles
+    WHERE article_date IN (${placeholders})
+    ORDER BY article_date DESC, position ASC
+  `).all(...dates);
+
+  return rows.map((row) => ({
+    date: row.article_date,
+    team: row.team,
+    sport: row.sport,
+    title: row.title,
+    subtitle: row.subtitle
+  }));
+}
+
 function getArticleById(id) {
   const row = db.prepare('SELECT * FROM articles WHERE id = ?').get(id);
   return row ? rowToArticle(row) : null;
@@ -91,5 +117,6 @@ module.exports = {
   getArticlesForDate,
   getLatestArticles,
   getPastDates,
+  getRecentArticles,
   getArticleById
 };

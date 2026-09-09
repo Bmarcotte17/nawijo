@@ -2,7 +2,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 const Anthropic = require('@anthropic-ai/sdk');
-const { clearArticlesForDate, insertArticle } = require('./db');
+const { clearArticlesForDate, insertArticle, getRecentArticles } = require('./db');
 const { LEVELS } = require('./levels');
 const DEMO_ARTICLES = require('./demo-data');
 
@@ -65,17 +65,36 @@ function textFromResponse(response) {
 
 const CANDIDATE_POOL_SIZE = 10;
 
-async function findTodaysNews(client) {
+const TRUSTED_DOMAINS = [
+  'lapresse.ca', 'rds.ca', 'tsn.ca', 'sportsnet.ca', 'nhl.com', 'mlssoccer.com', 'cfl.ca',
+  'noovo.info', 'radio-canada.ca', 'tvasports.ca', 'journaldemontreal.com', 'nfl.com',
+  'mlb.com', 'nba.com', 'olympics.com', 'thescore.com'
+];
+
+function buildRecentCoverageBlock(articleDate) {
+  const recent = getRecentArticles(articleDate, 3);
+  if (!recent.length) return '';
+  const lines = recent.map((a) => `- ${a.date} : ${a.team} — "${a.title}"`).join('\n');
+  return `\nActualités déjà publiées ces derniers jours (à NE PAS répéter) :\n${lines}\n
+IMPORTANT : ne propose pas une actualité qui couvre le même événement précis qu'une actualité déjà publiée
+ci-dessus (ex: le même match, la même transaction, la même nouvelle qui continue de se répéter jour après
+jour). Un nouvel angle sur la même équipe est acceptable UNIQUEMENT s'il s'agit d'un événement clairement
+différent (ex: un autre match, une transaction, une blessure, plutôt que reformuler la même histoire).\n`;
+}
+
+async function findTodaysNews(client, articleDate) {
+  const recentCoverageBlock = buildRecentCoverageBlock(articleDate);
+
   const prompt = `Trouve les ${CANDIDATE_POOL_SIZE} actualités sportives les plus importantes d'aujourd'hui en français,
 en priorité pour Montréal, puis Québec, Canada, Amérique du Nord, puis mondial (dans cet ordre de priorité dans le tableau).
 Pour chaque actualité, retourne : titre, sous-titre, équipe, sport, faits clés (joueurs, score, contexte).
-
+${recentCoverageBlock}
 Pour chaque actualité, indique aussi l'URL de la page web (trouvée par ta recherche) qui couvre l'événement,
 et si possible une deuxième URL d'une page centrée sur le joueur vedette ou un moment clé (sinon null).
-Ces URLs serviront uniquement à afficher la vraie photo publiée sur ces pages — choisis en priorité des
-sites de presse généralistes ou sportifs connus pour publier de vraies photos éditoriales dans leurs pages
-(ex: La Presse, TSN, Sportsnet, NHL.com, MLS.com, sites officiels d'équipes, agences de presse). Évite autant
-que possible les sites qui bloquent les robots ou n'affichent pas de photo dans leurs pages (ex: ESPN,
+Ces URLs serviront uniquement à afficher la vraie photo publiée sur ces pages — privilégie en priorité ces
+sites connus pour publier de vraies photos éditoriales bien liées à chaque article : ${TRUSTED_DOMAINS.join(', ')}.
+Si aucun de ces sites ne couvre l'événement, un autre site de presse ou sportif sérieux est acceptable. Évite
+autant que possible les sites qui bloquent les robots ou n'affichent pas de photo dans leurs pages (ex: ESPN,
 Sofascore, Forbes) — préfère une autre source qui couvre le même événement si possible.
 IMPORTANT : utilise l'URL exacte de l'article spécifique qui couvre cet événement précis (ex: se terminant
 par un titre d'article ou un identifiant), jamais une page de catégorie, d'index, d'équipe générique ou de
@@ -404,11 +423,11 @@ function pickBadge(sport) {
   return '🏆';
 }
 
-async function generateWithAI() {
+async function generateWithAI(articleDate) {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   console.log('Étape 1/3 — Recherche des actualités sportives du jour...');
-  const candidates = await findTodaysNews(client);
+  const candidates = await findTodaysNews(client, articleDate);
 
   console.log(`Étape 2/3 — Recherche de vraies photos parmi ${candidates.length} actualités candidates...`);
   const selected = [];
@@ -503,7 +522,7 @@ async function generateWithAI() {
 async function generateArticles(articleDate) {
   console.log(`Génération des articles Nawijo pour le ${articleDate} (DEMO_MODE=${DEMO_MODE})`);
 
-  const articles = DEMO_MODE ? DEMO_ARTICLES : await generateWithAI();
+  const articles = DEMO_MODE ? DEMO_ARTICLES : await generateWithAI(articleDate);
 
   clearArticlesForDate(articleDate);
   for (const article of articles) {
