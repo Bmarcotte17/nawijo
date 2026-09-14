@@ -141,17 +141,28 @@ Réponds uniquement avec un objet JSON valide (sans texte autour, sans balises m
   }
 }
 
-async function generatePageText(client, facts, level, pageNumber) {
-  const pageFocus = pageNumber === 1
-    ? "l'événement principal (ce qui s'est passé, le résultat)"
-    : 'un joueur vedette ou un moment clé de cet événement';
+async function generatePageText(client, facts, level, pageNumber, previousPage) {
+  const focusInstruction = pageNumber === 1
+    ? "Concentre-toi sur l'événement principal (ce qui s'est passé, le résultat)."
+    : `Voici le texte déjà écrit pour la page 1 de cet article :
+"""
+Titre : ${previousPage.title}
+${previousPage.body}
+"""
+Rédige la page 2 comme une vraie SUITE de cette histoire, PAS une reformulation des mêmes faits déjà dits
+ci-dessus. Choisis l'angle le plus pertinent disponible dans les faits fournis pour approfondir ou compléter
+l'histoire (ex: un joueur vedette et son rôle, un moment clé, le contexte, les conséquences, une statistique
+marquante, ce que ça signifie pour l'équipe ou la suite). Si les faits ne contiennent pas assez d'éléments
+pour un angle vraiment distinct (ex: une simple nouvelle de transaction), choisis quand même un aspect
+complémentaire (détails du contrat, parcours du joueur, impact pour l'équipe) plutôt que de répéter
+l'essentiel déjà couvert en page 1.`;
 
   const prompt = `Voici des faits sportifs réels et exacts :
 """
 ${facts}
 """
 
-Rédige le texte de la page ${pageNumber} d'un article pour enfant, en te concentrant sur ${pageFocus}.
+Rédige le texte de la page ${pageNumber} d'un article pour enfant. ${focusInstruction}
 Niveau de lecture visé : "${level.name}" (${level.ageRange}), soit entre ${level.minWords} et ${level.maxWords} mots.
 Règles :
 - Les faits doivent rester exacts, seule la complexité du langage change selon le niveau.
@@ -512,10 +523,9 @@ async function generateWithAI(articleDate) {
 
     const content = {};
     for (const level of LEVELS) {
-      content[level.key] = {};
-      for (const pageNumber of [1, 2]) {
-        content[level.key][pageNumber] = await generatePageText(client, item.facts, level, pageNumber);
-      }
+      const page1 = await generatePageText(client, item.facts, level, 1);
+      const page2 = await generatePageText(client, item.facts, level, 2, page1);
+      content[level.key] = { 1: page1, 2: page2 };
     }
 
     articles.push({
