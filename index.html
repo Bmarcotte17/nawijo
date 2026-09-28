@@ -487,7 +487,7 @@
     section.hidden = false;
     list.innerHTML = '';
 
-    dates.forEach((isoDate) => {
+    dates.forEach((isoDate, index) => {
       const row = document.createElement('div');
       row.className = 'archive-row';
 
@@ -498,28 +498,37 @@
       const body = document.createElement('div');
       body.className = 'archive-row-body';
 
-      header.addEventListener('click', async () => {
-        const isOpen = row.classList.toggle('open');
-        if (isOpen && !body.dataset.loaded){
-          body.innerHTML = '<div class="loading">Chargement...</div>';
-          try {
-            const res = await fetch('/api/archive/' + isoDate);
-            const data = await res.json();
-            const grid = document.createElement('div');
-            grid.className = 'articles-list';
-            data.articles.forEach((article) => grid.appendChild(buildArticleCard(article)));
-            body.innerHTML = '';
-            body.appendChild(grid);
-            body.dataset.loaded = 'true';
-          } catch (err) {
-            body.innerHTML = '<div class="error-box">Impossible de charger ces articles.</div>';
-          }
+      async function loadArchiveDay(){
+        if (body.dataset.loaded) return;
+        body.innerHTML = '<div class="loading">Chargement...</div>';
+        try {
+          const res = await fetch('/api/archive/' + isoDate);
+          const data = await res.json();
+          const grid = document.createElement('div');
+          grid.className = 'articles-list';
+          data.articles.forEach((article) => grid.appendChild(buildArticleCard(article)));
+          body.innerHTML = '';
+          body.appendChild(grid);
+          body.dataset.loaded = 'true';
+        } catch (err) {
+          body.innerHTML = '<div class="error-box">Impossible de charger ces articles.</div>';
         }
+      }
+
+      header.addEventListener('click', () => {
+        const isOpen = row.classList.toggle('open');
+        if (isOpen) loadArchiveDay();
       });
 
       row.appendChild(header);
       row.appendChild(body);
       list.appendChild(row);
+
+      // La première ligne (le jour archivé le plus récent) s'affiche déjà dépliée.
+      if (index === 0){
+        row.classList.add('open');
+        loadArchiveDay();
+      }
     });
   }
 
